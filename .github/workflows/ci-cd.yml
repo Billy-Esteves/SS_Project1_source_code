@@ -1,0 +1,109 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    name: Build, Test & Security Checks
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # SECRET SCANNING (Gitleaks)
+      - name: Scan for secrets (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+
+      # SETUP PYTHON TOOLS
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install analysis tools
+        run: |
+          pip install pylint bandit pip-audit
+
+      - name: Set up Docker Compose
+        run: docker compose version
+
+      - name: Build containers
+        run: docker compose build
+
+      - name: Start services
+        run: docker compose up -d
+
+      - name: Wait for app to be ready
+        run: |
+          for i in {1..10}; do
+            if curl -s http://localhost:8000/health; then
+              echo "App is up"
+              break
+            fi
+            echo "Waiting..."
+            sleep 5
+          done
+
+      # CODE QUALITY (Pylint)
+      - name: Lint code (Pylint)
+        run: pylint web/
+
+      # SECURITY (Bandit)
+      - name: Security check (Bandit)
+        run: bandit -r web/
+
+      # DEPENDENCY SCAN (pip-audit)
+      - name: Dependency vulnerability scan (pip-audit)
+        run: pip-audit
+
+      # TESTING (Pytest)
+      - name: Run tests (Pytest)
+        run: docker compose exec -T web pytest tests/ -v
+
+      - name: Shutdown services
+        if: always()
+        run: docker compose down
+
+  cd:
+    name: Build, Scan & Push Images (GHCR)
+    runs-on: ubuntu-latest
+    needs: ci
+
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build web image
+        run: docker build -t ghcr.io/${{ github.repository }}/app-web:latest ./web
+
+      - name: Build db image
+        run: docker build -t ghcr.io/${{ github.repository }}/app-db:latest ./db
+
+      # CONTAINER SCANNING (Trivy)
+      - name: Scan web image (Trivy)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/app-web:latest
+
+      - name: Scan db image (Trivy)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/app-db:latest
+          
+      - name: Push images
+        run: |
+          docker push ghcr.io/${{ github.repository }}/app-web:latest
+          docker push ghcr.io/${{ github.repository }}/app-db:latest
