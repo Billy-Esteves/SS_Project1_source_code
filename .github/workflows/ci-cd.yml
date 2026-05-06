@@ -48,6 +48,9 @@ jobs:
             echo "Waiting..."
             sleep 5
           done
+          
+      - name: Install project dependencies
+        run: pip install -r requirements.txt
 
       # CODE QUALITY (Pylint)
       - name: Lint code (Pylint)
@@ -102,7 +105,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: ghcr.io/${{ github.repository }}/app-db:latest
-          
+
       - name: Push images
         run: |
           docker push ghcr.io/${{ github.repository }}/app-web:latest
