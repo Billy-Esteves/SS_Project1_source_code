@@ -112,5 +112,5 @@ jobs:
 
       - name: Push images
         run: |
-          docker build -t ghcr.io/billy-esteves/ss_project1_source_code/app-web:latest ./web
-          docker build -t ghcr.io/billy-esteves/ss_project1_source_code/app-db:latest ./db
+          docker push ghcr.io/${{ toLower(github.repository) }}/app-web:latest
+          docker push ghcr.io/${{ toLower(github.repository) }}/app-db:latest
