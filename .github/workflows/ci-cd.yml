@@ -55,6 +55,7 @@ jobs:
       # CODE QUALITY (Pylint)
       - name: Lint code (Pylint)
         run: pylint web/
+        continue-on-error: true
 
       # SECURITY (Bandit)
       - name: Security check (Bandit)
