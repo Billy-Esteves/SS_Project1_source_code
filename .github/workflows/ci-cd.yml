@@ -48,9 +48,9 @@ jobs:
             echo "Waiting..."
             sleep 5
           done
-          
+
       - name: Install project dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r web/requirements.txt
 
       # CODE QUALITY (Pylint)
       - name: Lint code (Pylint)
