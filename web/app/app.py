@@ -101,7 +101,7 @@ def register_routes(app):
             cur = conn.cursor()
 
             user = db.get_user_by_username(cur, username)
-            # Username [0] id [1] username [2] password [3] is_disabled [4] is_admin
+            #* Username [0] id [1] username [2] password [3] is_disabled [4] is_admin
 
             cur.close()
             conn.close()
@@ -113,15 +113,17 @@ def register_routes(app):
                 return flask.render_template("login.html")
             
             # logging.warning(user[2]) # Debug - Shows user password
+            # logging.warning(user[4]) # Debug - Shows if user is admin
+            
+            if user [3]: # if is disabled
+                flask.flash("User is disabled.", "error")
 
-            is_admin = user [4]
+            # is_admin = user [4] # not needed anyways
 
-            logging.warning(user[4]) # Debug - Shows if user is admin
+            #* Original condition: if user and (user[2] == password and not user[3]) or is_admin:
+            #* Removed the password skip for admin and "None" verification cause it's above now." 
 
-            # Original condition: if user and (user[2] == password and not user[3]) or is_admin:
-            # Removed the password skip for admin and "None" verification cause it's above now." 
-
-            if user[2] == password and not user[3]:
+            if check_password_hash(user[2], password):
                 flask.session.clear()
                 flask.session["user_id"] = user[0] if username != "admin" else 1
                 flask.session["username"] = user[1] if username != "admin" else username
