@@ -125,8 +125,8 @@ def register_routes(app):
 
             if check_password_hash(user[2], password):
                 flask.session.clear()
-                flask.session["user_id"] = user[0] if username != "admin" else 1
-                flask.session["username"] = user[1] if username != "admin" else username
+                flask.session["user_id"] = user[0] 
+                flask.session["username"] = user[1]
                 return flask.redirect(flask.url_for("documents_page"))
 
             flask.flash("Invalid credentials.", "error")
@@ -172,10 +172,11 @@ def register_routes(app):
     @app.route("/documents")
     @login_required
     def documents_page():
-        requested_user_id = flask.request.args.get("user_id")
+        # requested_user_id = flask.request.args.get("user_id")
         current_user_id = flask.session.get("user_id")
 
-        owner_id = requested_user_id or current_user_id
+        # owner_id = requested_user_id or current_user_id
+        owner_id = current_user_id
 
         conn = get_db()
         cur = conn.cursor()
