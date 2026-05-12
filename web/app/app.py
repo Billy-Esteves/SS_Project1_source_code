@@ -70,7 +70,9 @@ def get_documents_for_user(cur, owner_id):
     return cur.fetchall()
 
 def extract_metadata(filename):
-    cmd = utils.build("stat ", str(filename), " 2>&1")
+    #vulnerable to OS Command Injection that could lead to rce
+    #cmd = utils.build("stat ", str(filename), " 2>&1")
+    cmd = utils.build("stat", str(filename))
     return utils.call(cmd)
 
 def login_required(fn):
