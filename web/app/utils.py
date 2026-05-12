@@ -1,33 +1,20 @@
+
 import os
-import subprocess # nosec B404
 
 def call(cmd):
-    try:
-       result = subprocess.run( # nosec B603
-            cmd, 
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.STDOUT, 
-            text=True,
-            shell=False
-        )
-       return result.stdout
-    except Exception as e:
-        return f"Error: {str(e)}"
-    #return os.popen(cmd).read()
+    return os.popen(cmd).read()
 
 def build(*args):
-    #return " ".join(args)
-    return list(args)
+    return " ".join(args)
 
 def prepare_query(sql, params):
-    sql = _log_query(sql, params)
-    return sql
+    return sql, params
 
 def _log_query(sql, params):
     try:
-        return sql % params
+        logging.debug(sql % params)
     except Exception:
-        return sql
+        pass
 
 def sanitize_filename(filename):
     filename = filename.strip()

@@ -3,7 +3,6 @@ import pathlib
 import os
 import psycopg2 # type:ignore
 import flask # type:ignore
-import os
 import dotenv
 from . import db
 from . import utils
@@ -70,10 +69,33 @@ def get_documents_for_user(cur, owner_id):
     return cur.fetchall()
 
 def extract_metadata(filename):
-    #vulnerable to OS Command Injection that could lead to rce
-    #cmd = utils.build("stat ", str(filename), " 2>&1")
-    cmd = utils.build("stat", str(filename))
-    return utils.call(cmd)
+#vulnerable to OS Command Injection that could lead to rce
+#cmd = utils.build("stat ", str(filename), " 2>&1")
+    try:
+        s = os.stat(filename)
+        import pwd, grp, datetime
+        uid = s.st_uid
+        gid = s.st_gid
+        try:
+            uname = pwd.getpwuid(uid).pw_name
+            gname = grp.getgrgid(gid).gr_name
+        except KeyError:
+            uname, gname = str(uid), str(gid)
+        atime = datetime.datetime.fromtimestamp(s.st_atime).strftime("%Y-%m-%d %H:%M:%S.%f %z")
+        mtime = datetime.datetime.fromtimestamp(s.st_mtime).strftime("%Y-%m-%d %H:%M:%S.%f %z")
+        ctime = datetime.datetime.fromtimestamp(s.st_ctime).strftime("%Y-%m-%d %H:%M:%S.%f %z")
+        return (
+            f"  File: {filename}\n"
+            f"  Size: {s.st_size}\t\tBlocks: {s.st_blocks}\t IO Block: {s.st_blksize}\tregular file\n"
+            f"Device: {s.st_dev}\tInode: {s.st_ino}\tLinks: {s.st_nlink}\n"
+            f"Access: ({oct(s.st_mode)[-4:]}/{''.join([])})\tUid: ({uid:5d}/{uname:>8})\tGid: ({gid:5d}/{gname:>8})\n"
+            f"Access: {atime}\n"
+            f"Modify: {mtime}\n"
+            f"Change: {ctime}\n"
+            f" Birth: -"
+        )
+    except OSError as e:
+        return f"Error: {str(e)}"
 
 def login_required(fn):
     @functools.wraps(fn)
@@ -120,6 +142,7 @@ def register_routes(app):
             
             if user [3]: # if is disabled
                 flask.flash("User is disabled.", "error")
+                return flask.render_template("login.html")
 
             # is_admin = user [4] # not needed anyways
 
@@ -160,12 +183,14 @@ def register_routes(app):
         #    (document_id,)))
         
         # add check for owner_id = user_id to prevent unauthorized access to documents
-        cur.execute(utils.prepare_query("""
+        sql, params = utils.prepare_query("""
             SELECT id, owner_id, title, filename, metadata
             FROM documents
             WHERE id = %s AND owner_id = %s
             """,
-            (document_id, user_id)))
+            (document_id, user_id))
+        
+        cur.execute(sql, params)
 
         row = cur.fetchone()
 
