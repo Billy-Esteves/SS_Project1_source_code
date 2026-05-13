@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="card">
+  <h2>Documents Shared with Me</h2>
+  <p class="muted">Here you can find and download files that other users have shared with you.</p>
+  
+  {% if documents %}
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Title</th>
+        <th>Filename</th>
+        <th>Shared by (Owner)</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for doc in documents %}
+      <tr>
+        <td>{{ doc.id }}</td>
+        <td>{{ doc.title }}</td>
+        <td>{{ doc.filename }}</td>
+        <td><strong>{{ doc.owner_username }}</strong></td>
+        <td>
+          <a href="{{ url_for('download_shared_document', id=doc.id) }}" style="text-decoration: none;">
+            <button type="button" style="background-color: #1f3a5f; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            Download
+            </button>
+        </a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p>No documents have been shared with you yet.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

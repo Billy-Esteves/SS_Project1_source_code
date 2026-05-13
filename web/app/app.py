@@ -330,6 +330,114 @@ def register_routes(app):
 
         return flask.send_from_directory(upload_folder, filename, as_attachment=True)
 
+    @app.route("/shared/<id>/download")
+    @login_required
+    def download_shared_document(id):
+        user_id = flask.session.get("user_id")
+
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT d.filename
+            FROM documents d
+            JOIN document_shares ds ON d.id = ds.document_id
+            WHERE d.id = %s AND ds.shared_with = %s
+        """, (id, user_id))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not row:
+            return "Document not found", 404
+
+        filename = row[0]
+        upload_folder = BASE_DIR / app.config["UPLOAD_FOLDER"]
+
+        return flask.send_from_directory(upload_folder, filename, as_attachment=True)
+
+
+    @app.route("/documents/<document_id>/share", methods=["POST"])
+    @login_required
+    def share_document(document_id):
+        user_id = flask.session.get("user_id")
+        shared_with_id = flask.request.form.get("shared_with")
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        #check if shared file exists and belongs to user
+        cur.execute("""
+            SELECT id
+            FROM documents
+            WHERE id = %s AND owner_id = %s
+        """, (document_id, user_id))
+
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            cur.close()
+            flask.abort(403)
+        
+        #check if user to share with exists
+        cur.execute("""
+            SELECT id
+            FROM users
+            WHERE id = %s
+        """, (shared_with_id,))
+
+        row1 = cur.fetchone()
+        if not row1:
+            conn.close()
+            cur.close()
+            flask.flash("User to share with not found.", "error")
+            return flask.redirect(flask.url_for("document_details", document_id=document_id))
+
+        #share document with user
+        cur.execute("""
+            INSERT INTO document_shares (document_id, shared_with)
+            VALUES (%s, %s)
+        """, (document_id, shared_with_id))
+        conn.commit()
+
+        cur.close()
+        conn.close()
+        flask.flash("Document shared successfully.", "success")
+        return flask.redirect(flask.url_for("document_details", document_id=document_id))
+
+    @app.route("/shared")
+    @login_required
+    def shared_documents():
+        user_id = flask.session.get("user_id")
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT d.id, d.title, d.filename, d.uploaded_at, u.username
+            FROM documents d
+            JOIN document_shares ds ON d.id = ds.document_id
+            JOIN users u ON d.owner_id = u.id
+            WHERE ds.shared_with = %s
+            ORDER BY d.uploaded_at DESC
+        """, (user_id,))
+
+        rows = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        shared_docs = [
+            {
+                "id": r[0],
+                "title": r[1],
+                "filename": r[2],
+                "uploaded_at": r[3],
+                "owner_username": r[4],
+            }
+            for r in rows
+        ]
+
+        return flask.render_template("shared_documents.html", documents=shared_docs)
 
 
     # ------------------------------------------------------------------
