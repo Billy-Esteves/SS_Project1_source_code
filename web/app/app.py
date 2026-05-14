@@ -10,18 +10,19 @@ This module defines:
 """
 
 import functools
-import pathlib
+import logging
 import os
-import psycopg2 # type:ignore
-import flask # type:ignore
+import pathlib
+
 import dotenv
+import flask  # type:ignore
+import psycopg2  # type:ignore
+from werkzeug.security import check_password_hash  # type:ignore
+from werkzeug.security import generate_password_hash  # type:ignore
+from werkzeug.utils import secure_filename
+
 from . import db
 from . import utils
-import logging
-
-from werkzeug.security import generate_password_hash # type:ignore
-from werkzeug.security import check_password_hash # type:ignore
-from werkzeug.utils import secure_filename
 
 dotenv.load_dotenv()
 
@@ -154,9 +155,12 @@ def extract_metadata(filename):
         ctime = datetime.datetime.fromtimestamp(s.st_ctime).strftime("%Y-%m-%d %H:%M:%S.%f %z")
         return (
             f"  File: {filename}\n"
-            f"  Size: {s.st_size}\t\tBlocks: {s.st_blocks}\t IO Block: {s.st_blksize}\tregular file\n"
+            f"  Size: {s.st_size}\t\tBlocks: {s.st_blocks}\t"
+            + f"IO Block: {s.st_blksize}\tregular file\n"
             f"Device: {s.st_dev}\tInode: {s.st_ino}\tLinks: {s.st_nlink}\n"
-            f"Access: ({oct(s.st_mode)[-4:]}/{''.join([])})\tUid: ({uid:5d}/{uname:>8})\tGid: ({gid:5d}/{gname:>8})\n"
+            f"Access: ({oct(s.st_mode)[-4:]}/{''.join([])})\t"
+            + f"Uid: ({uid:5d}/{uname:>8})\t"
+            + f"Gid: ({gid:5d}/{gname:>8})\n"
             f"Access: {atime}\n"
             f"Modify: {mtime}\n"
             f"Change: {ctime}\n"
@@ -251,10 +255,10 @@ def register_routes(app):
             if user is None:
                 flask.flash("Invalid credentials.", "error")
                 return flask.render_template("login.html")
-            
+
             # logging.warning(user[2]) # Debug - Shows user password
             # logging.warning(user[4]) # Debug - Shows if user is admin
-            
+
             if user [3]: # if is disabled
                 flask.flash("User is disabled.", "error")
                 return flask.render_template("login.html")
@@ -262,11 +266,11 @@ def register_routes(app):
             # is_admin = user [4] # not needed anyways
 
             #* Original condition: if user and (user[2] == password and not user[3]) or is_admin:
-            #* Removed the password skip for admin and "None" verification cause it's above now." 
+            #* Removed the password skip for admin and "None" verification cause it's above now."
 
             if check_password_hash(user[2], password):
                 flask.session.clear()
-                flask.session["user_id"] = user[0] 
+                flask.session["user_id"] = user[0]
                 flask.session["username"] = user[1]
                 return flask.redirect(flask.url_for("documents_page"))
 
@@ -316,7 +320,7 @@ def register_routes(app):
         #   WHERE id = %s
         #    """,
         #    (document_id,)))
-        
+
         # add check for owner_id = user_id to prevent unauthorized access to documents
         sql, params = utils.prepare_query("""
             SELECT id, owner_id, title, filename, metadata
@@ -324,7 +328,7 @@ def register_routes(app):
             WHERE id = %s AND owner_id = %s
             """,
             (document_id, user_id))
-        
+
         cur.execute(sql, params)
 
         row = cur.fetchone()
@@ -417,7 +421,8 @@ def register_routes(app):
 
         #filename = utils.sanitize_filename(uploaded_file.filename)
         #destination = upload_folder / uploaded_file.filename
-        # Replaced the above two lines with secure_filename to prevent directory traversal and other filename issues.
+        # Replaced the above two lines with secure_filename to prevent
+        #directory traversal and other filename issues.
         filename = secure_filename(uploaded_file.filename)
         destination = upload_folder / filename
         uploaded_file.save(destination)
@@ -579,7 +584,7 @@ def register_routes(app):
             conn.close()
             cur.close()
             flask.abort(403)
-        
+
         #check if user to share with exists
         cur.execute("""
             SELECT id
