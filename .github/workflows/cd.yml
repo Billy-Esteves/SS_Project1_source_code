@@ -85,13 +85,20 @@ jobs:
           docker network create app-net || true
 
           docker run -d \
-            --name app-db-staging \
+            --name db \
             --network app-net \
             ghcr.io/${{ github.repository }}/app-db:${{ github.sha }}
 
           docker run -d \
             --name app-web-staging \
             --network app-net \
+            --network app-net \
+            -p 8000:8000 \
+            -e DB_HOST=app-db-staging \
+            -e DB_PORT=5432 \
+            -e DB_USER=postgres \
+            -e DB_PASSWORD=postgres \
+            -e DB_NAME=docdb \
             -p 8000:8000 \
             ghcr.io/${{ github.repository }}/app-web:${{ github.sha }}
 
