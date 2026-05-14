@@ -60,6 +60,10 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+        
+      - name: Install dependencies
+        run: |
+          pip install -r web/requirements.txt
 
       - name: Install lint tools
         run: pip install pylint
