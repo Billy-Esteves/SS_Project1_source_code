@@ -1,3 +1,14 @@
+"""
+Main Flask application module.
+
+This module defines:
+- application configuration,
+- database connection helpers,
+- authentication utilities,
+- file upload and sharing functionality,
+- and all HTTP routes for the document management system.
+"""
+
 import functools
 import pathlib
 import os
@@ -26,6 +37,13 @@ UPLOAD_FOLDER = "uploads"
 
 
 def get_db():
+    """
+    Create a PostgreSQL database connection.
+
+    Returns:
+        connection:
+            psycopg2 database connection object.
+    """
     return psycopg2.connect(
         host=DB_HOST,
         port=DB_PORT,
@@ -35,6 +53,25 @@ def get_db():
     )
 
 def create_app():
+    """
+    Retrieve documents belonging to a specific user.
+
+    Args:
+        cur:
+            Database cursor object.
+        owner_id (int):
+            Identifier of the document owner.
+
+    Returns:
+        list:
+            List of matching document records.
+    """
+    query = """
+        SELECT id,title,filename,uploaded_at
+        FROM documents
+        WHERE owner_id=%s
+        ORDER BY uploaded_at DESC
+    """
     app = flask.Flask(
         __name__,
         template_folder=str(BASE_DIR / "templates"),
@@ -49,7 +86,22 @@ def create_app():
     return app
 
 def get_documents_for_user(cur, owner_id):
+    """
+    Retrieve all documents belonging to a specific user.
 
+    Documents are returned ordered by upload date
+    in descending order.
+
+    Args:
+        cur:
+            Database cursor object.
+        owner_id (int):
+            Identifier of the document owner.
+
+    Returns:
+        list:
+            List of document records associated with the user.
+    """
     # query = f"""
     #     SELECT id,title,filename,uploaded_at
     #     FROM documents
@@ -64,14 +116,29 @@ def get_documents_for_user(cur, owner_id):
         WHERE owner_id=%s
         ORDER BY uploaded_at DESC
     """
-    
+
     cur.execute(query, (owner_id,))
 
     return cur.fetchall()
 
 def extract_metadata(filename):
-#vulnerable to OS Command Injection that could lead to rce
-#cmd = utils.build("stat ", str(filename), " 2>&1")
+    """
+    Extract filesystem metadata from a file.
+
+    Retrieves information such as file size,
+    ownership, timestamps, inode data, and permissions.
+
+    Args:
+        filename (str):
+            Path to the target file.
+
+    Returns:
+        str:
+            Formatted metadata information or an error message
+            if the file cannot be accessed.
+    """
+    #vulnerable to OS Command Injection that could lead to rce
+    #cmd = utils.build("stat ", str(filename), " 2>&1")
     try:
         s = os.stat(filename)
         import pwd, grp, datetime
@@ -99,6 +166,20 @@ def extract_metadata(filename):
         return f"Error: {str(e)}"
 
 def login_required(fn):
+    """
+    Decorator that restricts access to authenticated users.
+
+    If the current session does not contain a valid user ID,
+    the user is redirected to the login page.
+
+    Args:
+        fn:
+            Route handler function to wrap.
+
+    Returns:
+        function:
+            Wrapped route handler.
+    """
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         if "user_id" not in flask.session:
@@ -109,15 +190,48 @@ def login_required(fn):
     return wrapper
 
 def register_routes(app):
+    """
+    Register all application routes.
+
+    Defines authentication, document management,
+    sharing, download, and health-check endpoints.
+
+    Args:
+        app (Flask):
+            Flask application instance.
+
+    Returns:
+        None
+    """
 
     @app.route("/")
     def index():
+        """
+        Redirect users to the appropriate landing page.
+
+        Authenticated users are redirected to the documents page,
+        while unauthenticated users are redirected to login.
+
+        Returns:
+            Response:
+                Flask redirect response.
+        """
         if flask.session.get("user_id"):
             return flask.redirect(flask.url_for("documents_page"))
         return flask.redirect(flask.url_for("login"))
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
+        """
+        Authenticate a user and create a session.
+
+        Handles both rendering the login page and processing
+        submitted login credentials.
+
+        Returns:
+            Response:
+                Rendered template or redirect response.
+        """
 
         if flask.request.method == "POST":
             username = flask.request.form.get("username", "")
@@ -162,12 +276,32 @@ def register_routes(app):
 
     @app.route("/logout")
     def logout():
+        """
+        Clear the current user session.
+
+        Returns:
+            Response:
+                Redirect to the login page.
+        """
         flask.session.clear()
         return flask.redirect(flask.url_for("login"))
 
     @app.route("/documents/<int:document_id>")
     @login_required
     def document_details(document_id):
+        """
+        Display metadata and details for a document.
+
+        Access is restricted to the document owner.
+
+        Args:
+            document_id (int):
+                Identifier of the requested document.
+
+        Returns:
+            Response:
+                Rendered document details page or 404 response.
+        """
 
         #get id of user from session
         user_id = flask.session.get("user_id")
@@ -214,6 +348,17 @@ def register_routes(app):
     @app.route("/documents")
     @login_required
     def documents_page():
+        """
+        Display the document dashboard for the current user.
+
+        Retrieves all documents owned by the authenticated user
+        and renders them in the documents page.
+
+        Returns:
+            Response:
+                Rendered HTML template containing the user's
+                document list.
+        """
         # requested_user_id = flask.request.args.get("user_id")
         current_user_id = flask.session.get("user_id")
 
@@ -249,6 +394,16 @@ def register_routes(app):
     @app.route("/documents/upload", methods=["POST"])
     @login_required
     def upload_document():
+        """
+        Upload and store a document for the current user.
+
+        Saves the uploaded file, extracts metadata,
+        and stores the document record in the database.
+
+        Returns:
+            Response:
+                Redirect response to the documents page.
+        """
         user_id = flask.session.get("user_id")
         title = flask.request.form.get("title", "Untitled")
         uploaded_file = flask.request.files.get("document")
@@ -295,6 +450,13 @@ def register_routes(app):
 
     @app.route("/health")
     def health():
+        """
+        Perform a database connectivity health check.
+
+        Returns:
+            tuple:
+                JSON status response and HTTP status code.
+        """
         try:
             conn = get_db()
             cur = conn.cursor()
@@ -309,6 +471,21 @@ def register_routes(app):
     @app.route("/documents/<id>/download")
     @login_required
     def download_document(id):
+        """
+        Download a document owned by the authenticated user.
+
+        Verifies that the requested document belongs to the
+        current user before sending the file as an attachment.
+
+        Args:
+            id (str):
+                Identifier of the document to download.
+
+        Returns:
+            Response:
+                File download response or a 404 error if the
+                document does not exist or is inaccessible.
+        """
         user_id = flask.session.get("user_id")
 
         conn = get_db()
@@ -333,6 +510,17 @@ def register_routes(app):
     @app.route("/shared/<id>/download")
     @login_required
     def download_shared_document(id):
+        """
+        Download a document owned by the current user.
+
+        Args:
+            id (str):
+                Identifier of the requested document.
+
+        Returns:
+            Response:
+                File download response or 404 response.
+        """
         user_id = flask.session.get("user_id")
 
         conn = get_db()
@@ -359,6 +547,20 @@ def register_routes(app):
     @app.route("/documents/<document_id>/share", methods=["POST"])
     @login_required
     def share_document(document_id):
+        """
+        Share a document with another user.
+
+        Verifies ownership of the document and existence
+        of the target user before creating a sharing record.
+
+        Args:
+            document_id (str):
+                Identifier of the document to share.
+
+        Returns:
+            Response:
+                Redirect response after sharing operation.
+        """
         user_id = flask.session.get("user_id")
         shared_with_id = flask.request.form.get("shared_with")
 
@@ -407,6 +609,13 @@ def register_routes(app):
     @app.route("/shared")
     @login_required
     def shared_documents():
+        """
+        Display documents shared with the current user.
+
+        Returns:
+            Response:
+                Rendered shared documents page.
+        """
         user_id = flask.session.get("user_id")
 
         conn = get_db()

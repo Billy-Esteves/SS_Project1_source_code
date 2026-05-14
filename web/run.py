@@ -1,3 +1,10 @@
+"""
+Application entry point.
+
+This module starts the Flask development server by creating
+the application instance using the application factory pattern.
+"""
+
 from app import app
 
 
