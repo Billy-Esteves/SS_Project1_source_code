@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   packages: write
+  issues: write
 
 concurrency:
   group: cd-${{ github.ref }}
@@ -181,6 +182,7 @@ jobs:
         uses: zaproxy/action-baseline@v0.15.0
         with:
           target: "http://localhost:8000"
+          
 
 
   # PRODUCTION DEPLOYMENT (MANUAL GATE)
