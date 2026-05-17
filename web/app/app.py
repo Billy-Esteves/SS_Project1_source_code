@@ -24,6 +24,8 @@ from werkzeug.utils import secure_filename
 from . import db
 from . import utils
 
+import datetime
+
 dotenv.load_dotenv()
 
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
@@ -35,6 +37,8 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
 DB_NAME = os.getenv("DB_NAME", "docdb")
 
 UPLOAD_FOLDER = "uploads"
+
+MAX_FAILED_ATTEMPTS = 3
 
 
 def get_db():
@@ -263,38 +267,109 @@ def register_routes(app):
             cur = conn.cursor()
 
             user = db.get_user_by_username(cur, username)
-            #* Username [0] id [1] username [2] password [3] is_disabled [4] is_admin
+            #* User: [0] id [1] username [2] password [3] is_disabled [4] is_admin [5] bad_attempts [6] locked_until
 
-            cur.close()
-            conn.close()
-
-            # Added check for user cause IDE was cryin about it
+            # Check user exists
 
             if user is None:
+                cur.close()
+                conn.close()
                 flask.flash("Invalid credentials.", "error")
                 return flask.render_template("login.html")
 
-            # logging.warning(user[2]) # Debug - Shows user password
-            # logging.warning(user[4]) # Debug - Shows if user is admin
-
             if user [3]: # if is disabled
+                cur.close()
+                conn.close()
                 flask.flash("User is disabled.", "error")
                 return flask.render_template("login.html")
+            
+            # logging.warning("Timestamp")
+            # logging.warning(user[6])
+            # logging.warning("Number of attempts")
+            # logging.warning(user[5])
 
-            # is_admin = user [4] # not needed anyways
+            
+            if user[6] is not None: # If it has timestamp
+                now = datetime.datetime.now()
+
+                # Is it still locked?
+                if user[6] > now:
+                    cur.close()
+                    conn.close()
+
+                    # Flash error
+                    flask.flash(
+                        "Too many login attempts. Try again later.",
+                        "error"
+                    )
+
+                    # Return to login
+                    return flask.render_template("login.html")
 
             #* Original condition: if user and (user[2] == password and not user[3]) or is_admin:
             #* Removed the password skip for admin and "None" verification cause it's above now."
 
+            # Password check
             if check_password_hash(user[2], password):
+                
+                # Auth good, reset locked timestamp to null
+                cur.execute("""
+                    UPDATE users
+                    SET bad_attempts = 0,
+                        locked_until = NULL
+                    WHERE username = %s""",
+                    (username,)
+                )
+                conn.commit()
+
                 flask.session.clear()
                 flask.session["user_id"] = user[0]
                 flask.session["username"] = user[1]
                 flask.session["is_admin"] = user[4]
+
+                cur.close()
+                conn.close()
+
+                # Move to logged page
                 return flask.redirect(flask.url_for("documents_page"))
 
+            # Else give error
             flask.flash("Invalid credentials.", "error")
 
+            # Update failed attempts
+            failed_attempts = user[5] + 1
+            locked_until = None
+
+            # If over limit
+            if failed_attempts >= MAX_FAILED_ATTEMPTS:
+                # Calculate timestamp
+                locked_until = (
+                    datetime.datetime.now()
+                    + datetime.timedelta(minutes=15)
+                )
+
+                # Return to 0
+                failed_attempts = 0
+
+            # Update DB info
+            cur.execute("""
+                UPDATE users
+                SET bad_attempts = %s,
+                    locked_until = %s
+                WHERE username = %s
+            """, (
+                failed_attempts,
+                locked_until,
+                username
+            ))
+
+            conn.commit()
+
+            cur.close()
+            conn.close()
+
+
+        # And move to login screen
         return flask.render_template("login.html")
 
     @app.route("/logout")
